@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>□□</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #cbf5ff;
+      position: fixed;
+      inset: 0;
+    }
+
+    #game-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    .touch-btn {
+      position: fixed;
+      width: 72px;
+      height: 72px;
+      border-radius: 16px;
+      border: 3px solid #111111;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 4px 0 #111111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      outline: none;
+      z-index: 20;
+      transition: transform 0.06s ease, background-color 0.1s ease;
+    }
+
+    .touch-btn:active,
+    .touch-btn.pressed {
+      transform: translateY(3px);
+      box-shadow: 0 1px 0 #111111;
+      background: #e3f8ff;
+    }
+
+    .touch-btn.active-mode {
+      background: #ffe082;
+      border-color: #e60012;
+    }
+
+    .touch-btn.muted-mode {
+      background: #ffcdd2;
+    }
+
+    .touch-btn svg {
+      width: 40px;
+      height: 40px;
+      pointer-events: none;
+    }
+
+    /* Top Bar Utility Buttons (Zero Overlap) */
+    #btn-map     { top: 10px; left: 12px; }
+    #btn-restart { top: 10px; left: 94px; }
+    #btn-hero    { top: 10px; left: 176px; }
+    #btn-mute    { top: 10px; right: 12px; }
+
+    /* Bottom-Left 2x2 Directional Pad (Zero Overlap) */
+    #btn-up      { bottom: 94px; left: 12px; }
+    #btn-down    { bottom: 94px; left: 94px; }
+    #btn-left    { bottom: 12px; left: 12px; }
+    #btn-right   { bottom: 12px; left: 94px; }
+
+    /* Bottom-Right 2x3 Action Cluster (Zero Overlap) */
+    #btn-draw    { bottom: 94px; right: 176px; }
+    #btn-hook    { bottom: 94px; right: 94px; }
+    #btn-erase   { bottom: 94px; right: 12px; }
+    #btn-throw   { bottom: 12px; right: 176px; }
+    #btn-shoot   { bottom: 12px; right: 94px; }
+    #btn-jump    { bottom: 12px; right: 12px; background: #e8f5e9; }
+
+    /* Compact adaptation for smaller phones (< 480px width or < 420px height) while keeping >= 64x64px */
+    @media (max-width: 480px), (max-height: 420px) {
+      .touch-btn {
+        width: 64px;
+        height: 64px;
+        border-radius: 14px;
+      }
+      #btn-map     { top: 6px; left: 6px; }
+      #btn-restart { top: 6px; left: 76px; }
+      #btn-hero    { top: 6px; left: 146px; }
+      #btn-mute    { top: 6px; right: 6px; }
+
+      #btn-up      { bottom: 76px; left: 6px; }
+      #btn-down    { bottom: 76px; left: 76px; }
+      #btn-left    { bottom: 6px; left: 6px; }
+      #btn-right   { bottom: 6px; left: 76px; }
+
+      #btn-draw    { bottom: 76px; right: 146px; }
+      #btn-hook    { bottom: 76px; right: 76px; }
+      #btn-erase   { bottom: 76px; right: 6px; }
+      #btn-throw   { bottom: 6px; right: 146px; }
+      #btn-shoot   { bottom: 6px; right: 76px; }
+      #btn-jump    { bottom: 6px; right: 6px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Top Utility Cluster (100% Graphical SVG Icons, Zero Text) -->
+  <button id="btn-map" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="6" y="6" width="11" height="11" rx="2" fill="#1cc800" stroke="#111" stroke-width="2.5"/>
+      <rect x="23" y="6" width="11" height="11" rx="2" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <rect x="6" y="23" width="11" height="11" rx="2" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <rect x="23" y="23" width="11" height="11" rx="2" fill="#ff8da1" stroke="#111" stroke-width="2.5"/>
+    </svg>
+  </button>
+
+  <button id="btn-restart" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <path d="M 29 14 A 11 11 0 1 0 31 24" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round"/>
+      <polygon points="29,6 34,15 23,15" fill="#e60012" stroke="#111" stroke-width="1.5"/>
+    </svg>
+  </button>
+
+  <button id="btn-hero" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="5" y="13" width="14" height="14" fill="#fff" stroke="#111" stroke-width="2.4"/>
+      <rect x="9" y="18" width="2.2" height="2.2" fill="#111"/>
+      <rect x="14" y="18" width="2.2" height="2.2" fill="#111"/>
+      <rect x="21" y="13" width="14" height="14" fill="#fff" stroke="#111" stroke-width="2.4"/>
+      <rect x="25" y="18" width="2.2" height="2.2" fill="#111"/>
+      <rect x="30" y="18" width="2.2" height="2.2" fill="#111"/>
+      <circle cx="24" cy="12" r="4" fill="#ff8da1" stroke="#111" stroke-width="1.8"/>
+    </svg>
+  </button>
+
+  <button id="btn-mute" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <polygon points="8,16 15,16 23,9 23,31 15,24 8,24" fill="#111"/>
+      <path d="M 27 14 Q 33 20 27 26" fill="none" stroke="#1cc800" stroke-width="3" stroke-linecap="round"/>
+      <path d="M 31 10 Q 39 20 31 30" fill="none" stroke="#29b6f6" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <!-- Bottom-Left Directional Cluster -->
+  <button id="btn-up" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <polygon points="20,8 33,28 7,28" fill="#111"/>
+    </svg>
+  </button>
+
+  <button id="btn-down" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <polygon points="20,32 33,12 7,12" fill="#111"/>
+    </svg>
+  </button>
+
+  <button id="btn-left" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <polygon points="8,20 28,7 28,33" fill="#111"/>
+    </svg>
+  </button>
+
+  <button id="btn-right" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <polygon points="32,20 12,7 12,33" fill="#111"/>
+    </svg>
+  </button>
+
+  <!-- Bottom-Right Action Cluster (All 6 Box Actions + Jump) -->
+  <button id="btn-draw" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="7" y="15" width="13" height="13" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <rect x="20" y="15" width="13" height="13" fill="#7b7d80" stroke="#111" stroke-width="2.5"/>
+      <polygon points="26,6 32,12 20,12" fill="#e60012"/>
+    </svg>
+  </button>
+
+  <button id="btn-hook" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <path d="M 12 31 L 12 13 L 28 13" fill="none" stroke="#111" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polygon points="25,7 34,13 25,19" fill="#ffab00" stroke="#111" stroke-width="1.5"/>
+    </svg>
+  </button>
+
+  <button id="btn-erase" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <path d="M 11 11 L 29 29 M 29 11 L 11 29" stroke="#ef5350" stroke-width="4.5" stroke-linecap="round"/>
+    </svg>
+  </button>
+
+  <button id="btn-throw" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="6" y="21" width="11" height="11" fill="#7b7d80" stroke="#111" stroke-width="2.2"/>
+      <path d="M 14 18 Q 24 6 33 19" fill="none" stroke="#111" stroke-width="3" stroke-dasharray="3,2"/>
+      <polygon points="34,23 28,17 35,14" fill="#e60012"/>
+    </svg>
+  </button>
+
+  <button id="btn-shoot" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="6" y="14" width="12" height="12" fill="#7b7d80" stroke="#111" stroke-width="2.2"/>
+      <path d="M 22 14 L 28 20 L 22 26 M 28 14 L 34 20 L 28 26" fill="none" stroke="#29b6f6" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <button id="btn-jump" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <rect x="13" y="18" width="14" height="14" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <polygon points="20,5 29,15 11,15" fill="#1cc800" stroke="#111" stroke-width="1.5"/>
+    </svg>
+  </button>
+
+  <script src="src/audio.js"></script>
+  <script src="src/stages.js"></script>
+  <script src="src/engine.js"></script>
+  <script src="src/renderer.js"></script>
+  <script src="src/input.js"></script>
+  <script>
+    (function () {
+      const canvas = document.getElementById('game-canvas');
+      window.BoxBoyRenderer.attach(canvas);
+      window.BoxBoyInput.init(window.BoxBoyEngine, window.BoxBoyRenderer, canvas);
+    })();
+  </script>
+</body>
+</html>

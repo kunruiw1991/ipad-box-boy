@@ -1,0 +1,14 @@
+# Internal Teamwork & Specification Artifacts (never push to public GitHub)
+.agents/
+ORIGINAL_REQUEST.md
+BRIEFING.md
+BRIEFING_ARCHIVE.md
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md
+GATE_STATUS.md
+reference_sheets/
+tests/
+__pycache__/
+*.pyc
+.DS_Store
