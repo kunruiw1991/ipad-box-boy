@@ -26,6 +26,9 @@
 
       // Interactive canvas hit regions for Title, Map, Clear, and Mode A action bubbles
       this.hitRegions = [];
+      // Named screen-space rects (play button, map nodes, clear-card buttons) the
+      // Guide Coach points its hand at.
+      this.regions = {};
     }
 
     attach(canvas) {
@@ -85,6 +88,7 @@
       ctx.save();
       ctx.scale(this.dpr, this.dpr);
       this.hitRegions = [];
+      this.regions = {};
 
       this._drawSkyBackground(ctx, engine.time);
 
@@ -99,6 +103,8 @@
           this._drawStageClearModal(ctx, engine);
         }
       }
+
+      this._drawCoachRegionGlow(ctx, engine);
 
       ctx.restore();
     }
@@ -327,6 +333,7 @@
       ctx.fill();
       ctx.restore();
 
+      this.regions.play = { x: playX, y: playY, w: playW, h: playH };
       this.hitRegions.push({
         x: playX - 10,
         y: playY - 10,
@@ -495,6 +502,7 @@
           this._drawRedSelectionBrackets(ctx, n.x - 5, n.y - 5, nodeSize + 10, nodeSize + 10, 10);
         }
 
+        this.regions['map' + n.idx] = { x: n.x, y: n.y, w: nodeSize, h: nodeSize };
         this.hitRegions.push({
           x: n.x - 4,
           y: n.y - 4,
@@ -665,10 +673,18 @@
           this._drawDirectionalPreviewArrows(ctx, tr.x, tr.y, tr.w, engine, tip);
         }
 
-        // Draw floating one-tap Mode A action bubbles near the active chain when chain has >= 1 box
-        if (act.length > 0 && engine.player.chainState !== 'retracting') {
+        // Draw floating one-tap Mode A action bubbles near the active chain when chain has >= 1 box.
+        // Hidden while the Guide Coach is on so exactly one highlighted control is ever suggested.
+        const coach = window.BoxBoyCoach;
+        const coachOn = Boolean(coach && coach.enabled);
+        if (act.length > 0 && engine.player.chainState !== 'retracting' && !coachOn) {
           this._drawFloatingChainActionBubbles(ctx, engine, act[act.length - 1], st.height);
         }
+      }
+
+      // 13b. Guide Coach target preview (walk pad, jump arc, ghost boxes, hook/slide paths)
+      if (engine.screen === 'game') {
+        this._drawCoachOverlay(ctx, engine);
       }
 
       // 14. Draw Puff & Sparkle Particles
@@ -1149,7 +1165,7 @@
         { dx: -26, color: '#29b6f6', icon: 'shoot', act: () => engine.injectAction({ type: 'shoot' }) },
         { dx: 26, color: '#ffab00', icon: 'hook', act: () => engine.injectAction({ type: 'hook' }) },
         { dx: 78, color: '#ef5350', icon: 'erase', act: () => engine.injectAction({ type: 'erase' }) }
-      ];
+      ].filter((b) => b.icon === 'place' || b.icon === 'erase' || engine.isMechanicUnlocked(b.icon));
 
       bubbles.forEach((b) => {
         const bx = centerX + b.dx;
@@ -1217,6 +1233,376 @@
           action: b.act
         });
       });
+    }
+
+    // =========================================================================
+    // GUIDE COACH OVERLAYS (100% graphical: golden pads, arcs, ghost boxes, rings)
+    // =========================================================================
+
+    _coachHint(engine) {
+      const coach = window.BoxBoyCoach;
+      if (!coach || !coach.enabled || !engine) return null;
+      return coach.hint || null;
+    }
+
+    _drawCoachRegionGlow(ctx, engine) {
+      const hint = this._coachHint(engine);
+      if (!hint || !hint.region) return;
+      const r = this.regions[hint.region];
+      if (!r) return;
+      const grow = 5 + Math.sin(engine.time * 6) * 3;
+      ctx.save();
+      ctx.shadowColor = 'rgba(255, 196, 0, 0.95)';
+      ctx.shadowBlur = 22;
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = '#ffd426';
+      this._roundRect(ctx, r.x - grow, r.y - grow, r.w + grow * 2, r.h + grow * 2, 16);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = '#111111';
+      this._roundRect(ctx, r.x - grow - 4, r.y - grow - 4, r.w + grow * 2 + 8, r.h + grow * 2 + 8, 19);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    _drawCoachOverlay(ctx, engine) {
+      const hint = this._coachHint(engine);
+      if (!hint || !hint.overlay || !engine.stage) return;
+      const ov = hint.overlay;
+      const H = engine.stage.height;
+      const t = engine.time;
+      const p = engine.player;
+
+      ctx.save();
+      switch (ov.type) {
+        case 'walk': {
+          if (p) this._coachDots(ctx, p.x + 0.5, p.y + 0.1, ov.x + 0.5, ov.y + 0.1, H, t);
+          this._coachPad(ctx, ov.x + 0.5, ov.y, H, t);
+          break;
+        }
+        case 'jump': {
+          if (Math.abs(ov.to.x - ov.from.x) < 0.2) {
+            this._coachUpArrow(ctx, ov.from.x + 0.5, ov.from.y + 1.25, H, t);
+          } else {
+            this._coachArc(ctx, ov.from.x + 0.5, ov.from.y + 1.0, ov.to.x + 0.5, ov.to.y + 0.12, H, t);
+            this._coachPad(ctx, ov.to.x + 0.5, ov.to.y, H, t, false);
+          }
+          break;
+        }
+        case 'boxes': {
+          const firstGhost = ov.next >= 0 ? ov.next : 0;
+          this._coachGhostCells(ctx, ov.cells.slice(firstGhost), ov.next >= 0 ? 0 : -1, H, t);
+          if (ov.next >= 0 && ov.cells[ov.next]) {
+            const from = ov.next === 0 ? ov.origin : ov.cells[ov.next - 1];
+            const to = ov.cells[ov.next];
+            if (from) this._coachArrow(ctx, from.x + 0.5, from.y + 0.5, to.x + 0.5, to.y + 0.5, H, t);
+          }
+          break;
+        }
+        case 'drop': {
+          this._coachGhostCells(ctx, ov.cells, -1, H, t);
+          if (p && p.activeChain.length > 0) {
+            const a = this._cellsCenter(p.activeChain);
+            const b = this._cellsCenter(ov.cells);
+            if (a && b && a.y - b.y > 0.5) this._coachArrow(ctx, a.x, a.y, b.x, b.y, H, t);
+            else if (b) this._coachDownArrow(ctx, b.x, b.y + 0.95, H, t);
+          }
+          break;
+        }
+        case 'throw': {
+          const b = this._cellsCenter(ov.cells);
+          if (p && b) this._coachArc(ctx, p.x + 0.5, p.y + 1.5, b.x, b.y, H, t);
+          this._coachGhostCells(ctx, ov.cells, -1, H, t);
+          break;
+        }
+        case 'hook': {
+          if (p && ov.path && ov.path.length) {
+            const pts = [{ x: p.x + 0.5, y: p.y + 0.5 }].concat(ov.path.map((c) => ({ x: c.x + 0.5, y: c.y + 0.5 })));
+            // Trim the path at the planned landing cell (the hook anchor).
+            let cut = pts.length;
+            for (let i = 1; i < pts.length; i++) {
+              if (Math.abs(pts[i].x - (ov.to.x + 0.5)) < 0.55 && Math.abs(pts[i].y - (ov.to.y + 0.5)) < 0.55) {
+                cut = i + 1;
+                break;
+              }
+            }
+            const path = pts.slice(0, cut);
+            this._coachPath(ctx, path, H, t);
+            const anchor = path[path.length - 1];
+            this._coachRing(ctx, anchor.x, anchor.y, H, t, 0.62);
+          }
+          break;
+        }
+        case 'shoot': {
+          const a = this._cellsCenter(ov.from);
+          const b = this._cellsCenter(ov.cells);
+          if (a && b) this._coachArrow(ctx, a.x, a.y, b.x, b.y, H, t);
+          this._coachGhostCells(ctx, ov.cells, -1, H, t);
+          (ov.switches || []).forEach((sw) => this._coachRing(ctx, sw.x + 0.5, sw.y + 0.5, H, t, 0.6));
+          break;
+        }
+        case 'hero': {
+          const h = engine.heroes[ov.hero];
+          if (h) {
+            this._coachRing(ctx, h.x + 0.5, h.y + 0.5, H, t, 0.78);
+            this._coachDownArrow(ctx, h.x + 0.5, h.y + 1.45, H, t);
+          }
+          break;
+        }
+        case 'door': {
+          this._coachRing(ctx, ov.x + 0.5, ov.y + 0.5, H, t, 0.9);
+          this._coachDownArrow(ctx, ov.x + 0.5, ov.y + 1.55, H, t);
+          break;
+        }
+        default:
+          break;
+      }
+      ctx.restore();
+    }
+
+    _cellsCenter(cells) {
+      if (!cells || cells.length === 0) return null;
+      let sx = 0;
+      let sy = 0;
+      cells.forEach((c) => {
+        sx += Math.round(c.x) + 0.5;
+        sy += Math.round(c.y) + 0.5;
+      });
+      return { x: sx / cells.length, y: sy / cells.length };
+    }
+
+    _coachStrokeGold(ctx, drawPath, width) {
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = width + 3.5;
+      drawPath();
+      ctx.stroke();
+      ctx.strokeStyle = '#ffd426';
+      ctx.lineWidth = width;
+      drawPath();
+      ctx.stroke();
+    }
+
+    _coachHead(ctx, x, y, angle, size) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.fillStyle = '#ffd426';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(size * 0.55, 0);
+      ctx.lineTo(-size * 0.45, -size * 0.55);
+      ctx.lineTo(-size * 0.45, size * 0.55);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    _coachPad(ctx, wx, wy, H, t, withArrow = true) {
+      const T = this.tileSize;
+      const c = this.worldToScreen(wx, wy, H);
+      const pulse = 0.88 + Math.sin(t * 6) * 0.12;
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 212, 38, 0.6)';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(c.x, c.y - 2, T * 0.5 * pulse, T * 0.17 * pulse, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      if (withArrow) this._coachDownArrow(ctx, wx, wy + 1.4, H, t);
+    }
+
+    _coachDownArrow(ctx, wx, wyTip, H, t) {
+      const T = this.tileSize;
+      const c = this.worldToScreen(wx, wyTip, H);
+      const tipY = c.y - Math.abs(Math.sin(t * 4.2)) * T * 0.3;
+      const w = T * 0.4;
+      const head = T * 0.36;
+      const stemW = T * 0.16;
+      const stemH = T * 0.34;
+      ctx.save();
+      ctx.fillStyle = '#ffd426';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(c.x, tipY);
+      ctx.lineTo(c.x + w, tipY - head);
+      ctx.lineTo(c.x + stemW, tipY - head);
+      ctx.lineTo(c.x + stemW, tipY - head - stemH);
+      ctx.lineTo(c.x - stemW, tipY - head - stemH);
+      ctx.lineTo(c.x - stemW, tipY - head);
+      ctx.lineTo(c.x - w, tipY - head);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    _coachUpArrow(ctx, wx, wyBase, H, t) {
+      const T = this.tileSize;
+      const c = this.worldToScreen(wx, wyBase, H);
+      const baseY = c.y - Math.abs(Math.sin(t * 4.2)) * T * 0.3;
+      const w = T * 0.4;
+      const head = T * 0.36;
+      const stemW = T * 0.16;
+      const stemH = T * 0.5;
+      ctx.save();
+      ctx.fillStyle = '#ffd426';
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(c.x - stemW, baseY);
+      ctx.lineTo(c.x - stemW, baseY - stemH);
+      ctx.lineTo(c.x - w, baseY - stemH);
+      ctx.lineTo(c.x, baseY - stemH - head);
+      ctx.lineTo(c.x + w, baseY - stemH);
+      ctx.lineTo(c.x + stemW, baseY - stemH);
+      ctx.lineTo(c.x + stemW, baseY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    _coachDots(ctx, x0, y0, x1, y1, H, t) {
+      const T = this.tileSize;
+      const dist = Math.hypot(x1 - x0, y1 - y0);
+      const n = Math.floor(dist / 0.5);
+      if (n < 2) return;
+      ctx.save();
+      for (let i = 1; i < n; i++) {
+        const f = i / n;
+        const c = this.worldToScreen(x0 + (x1 - x0) * f, y0 + (y1 - y0) * f, H);
+        const a = 0.35 + 0.65 * ((Math.sin(i * 0.9 - t * 7) + 1) * 0.5);
+        ctx.fillStyle = `rgba(255, 196, 0, ${a.toFixed(3)})`;
+        ctx.strokeStyle = 'rgba(17, 17, 17, 0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y - 4, T * 0.09, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    _coachArc(ctx, x0, y0, x1, y1, H, t) {
+      const T = this.tileSize;
+      const peak = Math.max(y0, y1) + 1.3;
+      const cwx = (x0 + x1) * 0.5;
+      const cwy = 2 * peak - (y0 + y1) * 0.5;
+      const a = this.worldToScreen(x0, y0, H);
+      const b = this.worldToScreen(x1, y1, H);
+      const c = this.worldToScreen(cwx, cwy, H);
+      ctx.save();
+      ctx.setLineDash([T * 0.24, T * 0.16]);
+      ctx.lineDashOffset = -t * T * 1.4;
+      this._coachStrokeGold(ctx, () => {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(c.x, c.y, b.x, b.y);
+      }, 4);
+      ctx.setLineDash([]);
+      this._coachHead(ctx, b.x, b.y, Math.atan2(b.y - c.y, b.x - c.x), T * 0.42);
+      ctx.restore();
+    }
+
+    _coachArrow(ctx, x0, y0, x1, y1, H, t) {
+      const T = this.tileSize;
+      const a = this.worldToScreen(x0, y0, H);
+      const b = this.worldToScreen(x1, y1, H);
+      const ang = Math.atan2(b.y - a.y, b.x - a.x);
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 4) return;
+      const nudge = (Math.sin(t * 7) + 1) * 0.5 * T * 0.12;
+      const sx = a.x + Math.cos(ang) * (T * 0.28 + nudge);
+      const sy = a.y + Math.sin(ang) * (T * 0.28 + nudge);
+      const ex = b.x - Math.cos(ang) * (T * 0.18 - nudge);
+      const ey = b.y - Math.sin(ang) * (T * 0.18 - nudge);
+      ctx.save();
+      this._coachStrokeGold(ctx, () => {
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+      }, 5);
+      this._coachHead(ctx, ex, ey, ang, T * 0.46);
+      ctx.restore();
+    }
+
+    _coachPath(ctx, pts, H, t) {
+      if (!pts || pts.length < 2) return;
+      const T = this.tileSize;
+      const sp = pts.map((pt) => this.worldToScreen(pt.x, pt.y, H));
+      ctx.save();
+      ctx.setLineDash([T * 0.22, T * 0.14]);
+      ctx.lineDashOffset = -t * T * 1.6;
+      this._coachStrokeGold(ctx, () => {
+        ctx.beginPath();
+        ctx.moveTo(sp[0].x, sp[0].y);
+        for (let i = 1; i < sp.length; i++) ctx.lineTo(sp[i].x, sp[i].y);
+      }, 4);
+      ctx.setLineDash([]);
+      const last = sp[sp.length - 1];
+      const prev = sp[sp.length - 2];
+      this._coachHead(ctx, last.x, last.y, Math.atan2(last.y - prev.y, last.x - prev.x), T * 0.42);
+      ctx.restore();
+    }
+
+    _coachRing(ctx, wx, wy, H, t, scale) {
+      const T = this.tileSize;
+      const c = this.worldToScreen(wx, wy, H);
+      const r = T * (scale || 0.7) * (1 + Math.sin(t * 6) * 0.08);
+      ctx.save();
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = '#111111';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#ffd426';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    _coachGhostCells(ctx, cells, emphasizeIdx, H, t) {
+      if (!cells || cells.length === 0) return;
+      ctx.save();
+      cells.forEach((cell, i) => {
+        const r = this.gridCellToRect(cell.x, cell.y, H);
+        const isNext = i === emphasizeIdx;
+        const pad = 3;
+        let x = r.x + pad;
+        let y = r.y + pad;
+        let s = r.w - pad * 2;
+        if (isNext) {
+          const grow = Math.sin(t * 7) * 2.2;
+          x -= grow;
+          y -= grow;
+          s += grow * 2;
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+        } else {
+          ctx.fillStyle = 'rgba(255, 240, 160, 0.42)';
+        }
+        ctx.fillRect(x, y, s, s);
+        ctx.setLineDash([6, 4]);
+        ctx.lineDashOffset = -t * 14;
+        ctx.strokeStyle = '#111111';
+        ctx.lineWidth = isNext ? 5.5 : 4.5;
+        ctx.strokeRect(x, y, s, s);
+        ctx.strokeStyle = '#ffd426';
+        ctx.lineWidth = isNext ? 3.2 : 2.4;
+        ctx.strokeRect(x, y, s, s);
+        ctx.setLineDash([]);
+      });
+      ctx.restore();
     }
 
     // =========================================================================
@@ -1508,7 +1894,7 @@
         }
       ];
 
-      btns.forEach((b) => {
+      btns.forEach((b, i) => {
         ctx.fillStyle = b.color;
         ctx.strokeStyle = '#111111';
         ctx.lineWidth = 2.5;
@@ -1517,6 +1903,7 @@
         ctx.stroke();
         b.drawIcon(b.x + btnW * 0.5, btnY + btnH * 0.5);
 
+        this.regions[['clearMap', 'clearReplay', 'clearNext'][i]] = { x: b.x, y: btnY, w: btnW, h: btnH };
         this.hitRegions.push({
           x: b.x,
           y: btnY,

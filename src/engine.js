@@ -22,9 +22,18 @@
   };
 
   class BoxBoyEngine {
-    constructor() {
+    /**
+     * @param {{headless?: boolean}} options headless engines (used by the Guide
+     *     Coach to replay stage solutions) never play audio, render, persist
+     *     progress, or emit action events.
+     */
+    constructor(options = {}) {
+      this.headless = Boolean(options && options.headless);
       this.stages = window.BoxBoyStages || [];
-      this.audio = window.BoxBoyAudio || null;
+      this.audio = this.headless ? null : (window.BoxBoyAudio || null);
+      this._listeners = [];
+      this.stageEpoch = 0;
+      this.mechanicFirstStage = this._computeMechanicUnlocks();
 
       this.screen = 'title'; // 'title' | 'map' | 'game' | 'clear'
       this.selectedHero = 'qbby'; // 'qbby' | 'qucy'
@@ -58,6 +67,36 @@
 
       if (this.stages.length > 0) {
         this._initStageState(0, false);
+      }
+    }
+
+    // First stage index whose verified solution uses each action type, so the
+    // touch UI can reveal Throw / Hook / Shoot buttons only once they are taught.
+    _computeMechanicUnlocks() {
+      const first = {};
+      (this.stages || []).forEach((st, idx) => {
+        (st.solution || []).forEach((step) => {
+          if (step && step.type && first[step.type] === undefined) first[step.type] = idx;
+        });
+      });
+      return first;
+    }
+
+    isMechanicUnlocked(type) {
+      const first = this.mechanicFirstStage[type];
+      return first !== undefined && this.stageIndex >= first;
+    }
+
+    addListener(fn) {
+      if (typeof fn === 'function') this._listeners.push(fn);
+    }
+
+    _emit(type, detail) {
+      if (this.headless || !this._listeners || this._listeners.length === 0) return;
+      for (let i = 0; i < this._listeners.length; i++) {
+        try {
+          this._listeners[i](type, detail);
+        } catch (e) {}
       }
     }
 
@@ -96,6 +135,7 @@
     }
 
     _saveProgress() {
+      if (this.headless) return;
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify(this.progress));
       } catch (e) {}
@@ -177,6 +217,8 @@
       this.medalEarned = 0;
 
       this._updateLasers();
+      this.stageEpoch += 1;
+      this._emit('stageInit', index);
       return this.getState();
     }
 
@@ -410,6 +452,14 @@
       if (this.isTerrainSolid(next.x, next.y) || this.isPlacedBoxAt(next.x, next.y, this.activeChar)) {
         return false; // Cannot extrude inside solid wall
       }
+      // The first box must never overlap the hero's body (that used to trap the hero
+      // inside its own box). Grid-align the hero onto its tile first, like the original
+      // game, as long as it keeps its footing.
+      if (p.activeChain.length === 0 && this._heroOverlapsCell(p, next.x, next.y)) {
+        if (!this._tryAlignHero(p, px) || this._heroOverlapsCell(p, next.x, next.y)) {
+          return false;
+        }
+      }
 
       p.activeChain.push(next);
       this.boxesUsed += 1;
@@ -417,6 +467,7 @@
       if (this.audio) this.audio.boxCreate(p.activeChain.length);
       this._checkSwitchAtCell(next.x, next.y);
       this._updateLasers();
+      this._emit('extend', dir);
       return true;
     }
 
@@ -428,6 +479,19 @@
         this.extendDir(dirs[i]);
       }
       return this.getState();
+    }
+
+    _heroOverlapsCell(h, cx, cy) {
+      return h.x + 0.12 < cx + 1 && h.x + 0.88 > cx && h.y + 0.02 < cy + 1 && h.y + 0.88 > cy;
+    }
+
+    _tryAlignHero(h, gx) {
+      if (Math.abs(h.x - gx) < 1e-6) return true;
+      if (this._collidesHeroAABB(gx, h.y)) return false;
+      if (h.grounded && !this._collidesHeroAABB(gx, h.y - 0.05)) return false;
+      h.x = gx;
+      h.vx = 0;
+      return true;
     }
 
     // Action 2: Drop / Place (Place)
@@ -451,6 +515,7 @@
 
       this._settlePlacedChain(p);
       this._updateLasers();
+      this._emit('place');
       return true;
     }
 
@@ -534,6 +599,7 @@
       this.drawMode = false;
       this.mechanicsExercised.throw = true;
       if (this.audio) this.audio.boxThrow();
+      this._emit('throw');
       return true;
     }
 
@@ -561,6 +627,7 @@
         this.drawMode = false;
         this.mechanicsExercised.hook = true;
         if (this.audio) this.audio.boxHook(1);
+        this._emit('hook', { anchored: false });
         return true;
       }
 
@@ -578,6 +645,7 @@
       this.drawMode = false;
       this.mechanicsExercised.hook = true;
       if (this.audio) this.audio.boxHook(1);
+      this._emit('hook', { anchored: true });
       return true;
     }
 
@@ -614,6 +682,7 @@
       this.drawMode = false;
       this.mechanicsExercised.shoot = true;
       if (this.audio) this.audio.boxShoot();
+      this._emit('shoot');
       return true;
     }
 
@@ -636,6 +705,7 @@
       if (hadBoxes) {
         this.mechanicsExercised.erase = true;
         if (this.audio) this.audio.boxErase();
+        this._emit('erase');
       }
       this._updateLasers();
       return hadBoxes;
@@ -668,6 +738,7 @@
         }
         this.mechanicsExercised.heroSwitch = true;
         if (this.audio) this.audio.jump();
+        this._emit('switchHero', this.activeChar);
       } else {
         // Solo stage: toggle visual character between Qbby and Qucy only for valid IDs
         const cur = this.player;
@@ -693,7 +764,7 @@
       for (let f = 0; f < count; f++) {
         this._stepSingleFrame(dt);
       }
-      if (window.BoxBoyRenderer) {
+      if (!this.headless && window.BoxBoyRenderer) {
         window.BoxBoyRenderer.render(this);
       }
       return this.getState();
@@ -890,10 +961,12 @@
         if (h.grounded) h.animState = 'idle';
       }
 
-      // Move horizontally & resolve X collisions
+      // Move horizontally & resolve X collisions (only the leading edge can block, so a
+      // hero that somehow overlaps a box on its trailing side can still walk free)
       if (h.vx !== 0) {
         const nextX = h.x + h.vx * dt;
-        if (!this._collidesHeroAABB(nextX, h.y)) {
+        const leadCol = h.vx > 0 ? Math.floor(nextX + 0.88) : Math.floor(nextX + 0.12);
+        if (!this._columnBlocksHero(leadCol, h.y)) {
           h.x = nextX;
           // Shift held activeChain with hero if walking
           if (h.activeChain.length > 0) {
@@ -912,28 +985,35 @@
       }
 
       // Apply gravity & resolve Y collisions
-      h.vy = Math.max(-18.0, h.vy - GRAVITY * dt);
-      const nextY = h.y + h.vy * dt;
-
-      if (!this._collidesHeroAABB(h.x, nextY)) {
-        h.y = nextY;
-        h.grounded = false;
-        if (Math.abs(h.vy) > 0.5) h.animState = 'jump';
+      if (h.grounded && h.vy <= 0 && this._collidesHeroAABB(h.x, h.y - 0.05)) {
+        // Standing firmly on a floor/box: stay put. Without this the hero sank
+        // 1/128 tile per frame, lost contact every other frame, and ~50% of jump
+        // presses were silently ignored because `grounded` flickered off.
+        h.vy = 0;
       } else {
-        if (h.vy < 0) {
-          // Landed on floor/box
-          const landedRow = Math.floor(nextY) + 1;
-          if (!h.grounded && h.vy < -3.0) {
-            h.scaleX = 1.16;
-            h.scaleY = 0.84;
-          }
-          h.y = landedRow;
-          h.vy = 0;
-          h.grounded = true;
+        h.vy = Math.max(-18.0, h.vy - GRAVITY * dt);
+        const nextY = h.y + h.vy * dt;
+
+        if (!this._collidesHeroAABB(h.x, nextY)) {
+          h.y = nextY;
+          h.grounded = false;
+          if (Math.abs(h.vy) > 0.5) h.animState = 'jump';
         } else {
-          // Hit ceiling
-          h.y = Math.floor(nextY);
-          h.vy = 0;
+          if (h.vy < 0) {
+            // Landed on floor/box
+            const landedRow = Math.floor(nextY) + 1;
+            if (!h.grounded && h.vy < -3.0) {
+              h.scaleX = 1.16;
+              h.scaleY = 0.84;
+            }
+            h.y = landedRow;
+            h.vy = 0;
+            h.grounded = true;
+          } else {
+            // Hit ceiling
+            h.y = Math.floor(nextY);
+            h.vy = 0;
+          }
         }
       }
 
@@ -947,6 +1027,15 @@
       if (h.y < -1.5) {
         this._onHeroHazardHit(h);
       }
+    }
+
+    _columnBlocksHero(gx, hy) {
+      const minY = Math.floor(hy + 0.02);
+      const maxY = Math.floor(hy + 0.88);
+      for (let gy = minY; gy <= maxY; gy++) {
+        if (this.isSolidForPlayer(gx, gy)) return true;
+      }
+      return false;
     }
 
     _collidesHeroAABB(hx, hy) {
@@ -1027,6 +1116,7 @@
       h.eyeState = 'hurt';
       this._spawnParticles(h.x + 0.5, h.y + 0.5, '#ffffff', 10);
       if (this.audio) this.audio.hurt();
+      this._emit('hurt');
       // Reset current stage attempt cleanly so budget medal remains achievable
       this._initStageState(this.stageIndex, true);
     }
@@ -1069,6 +1159,7 @@
       this._saveProgress();
 
       if (this.audio) this.audio.stageClear();
+      this._emit('clear', this.medalEarned);
     }
 
     // =========================================================================
@@ -1085,6 +1176,7 @@
         p.scaleX = 0.86;
         p.scaleY = 1.16;
         if (this.audio) this.audio.jump();
+        this._emit('jump');
         return true;
       }
       return false;
@@ -1252,7 +1344,7 @@
           break;
       }
 
-      if (window.BoxBoyRenderer) {
+      if (!this.headless && window.BoxBoyRenderer) {
         window.BoxBoyRenderer.render(this);
       }
       return this.getState();
@@ -1364,6 +1456,7 @@
   }
 
   const engine = new BoxBoyEngine();
+  window.BoxBoyEngineClass = BoxBoyEngine;
   window.BoxBoyEngine = engine;
 
   window.__BOXBOY__ = {
@@ -1378,6 +1471,9 @@
     },
     injectAction: (action) => engine.injectAction(action),
     runStageSolution: (idx) => engine.runStageSolution(idx),
-    runAllSolutions: () => engine.runAllSolutions()
+    runAllSolutions: () => engine.runAllSolutions(),
+    // Guide Coach inspection hooks (src/coach.js loads after this file).
+    getHint: () => (window.BoxBoyCoach ? window.BoxBoyCoach.getSummary() : null),
+    setHints: (on) => (window.BoxBoyCoach ? window.BoxBoyCoach.setEnabled(on) : false)
   };
 })();

@@ -48,7 +48,7 @@
       padding: 0;
       outline: none;
       z-index: 20;
-      transition: transform 0.06s ease, background-color 0.1s ease;
+      transition: transform 0.06s ease, background-color 0.1s ease, opacity 0.15s ease, filter 0.15s ease;
     }
 
     .touch-btn:active,
@@ -73,10 +73,117 @@
       pointer-events: none;
     }
 
+    /* Throw / Hook / Shoot only appear once the stage that teaches them is reached */
+    .touch-btn.locked {
+      display: none !important;
+    }
+
+    /* Create button turns into a green Drop button while a box chain is held */
+    #btn-draw .icon-drop { display: none; }
+    #btn-draw.has-chain .icon-create { display: none; }
+    #btn-draw.has-chain .icon-drop { display: block; }
+    #btn-draw.has-chain { background: #e8f5e9; border-color: #111111; }
+
+    /* In box-building mode the arrows build boxes: red arrows inside dashed box outlines */
+    .touch-btn .draw-ghost { display: none; }
+    body.draw-mode #btn-up .draw-ghost,
+    body.draw-mode #btn-down .draw-ghost,
+    body.draw-mode #btn-left .draw-ghost,
+    body.draw-mode #btn-right .draw-ghost { display: inline; }
+    body.draw-mode #btn-up .arrow,
+    body.draw-mode #btn-down .arrow,
+    body.draw-mode #btn-left .arrow,
+    body.draw-mode #btn-right .arrow { fill: #e60012; }
+    body.draw-mode #btn-up,
+    body.draw-mode #btn-down,
+    body.draw-mode #btn-left,
+    body.draw-mode #btn-right { background: #fff1f1; }
+
+    /* Hint (lightbulb) toggle */
+    #btn-hint.hint-off .bulb-glass { fill: #e6e6e6; }
+    #btn-hint.hint-off .bulb-rays { display: none; }
+
+    /* ===== Guide Coach: exactly ONE glowing button, everything else dimmed ===== */
+    .touch-btn.coach-dim {
+      opacity: 0.3;
+      filter: grayscale(0.7);
+    }
+
+    .touch-btn.coach-target {
+      z-index: 26;
+      background: #fff8cc;
+      box-shadow: 0 4px 0 #111111, 0 0 0 5px #ffd426, 0 0 26px 10px rgba(255, 196, 0, 0.75);
+      animation: coachPulse 0.9s ease-in-out infinite;
+    }
+
+    .touch-btn.coach-target.pressed,
+    .touch-btn.coach-target:active {
+      animation: none;
+    }
+
+    .touch-btn.coach-target::after {
+      content: '';
+      position: absolute;
+      inset: -9px;
+      border-radius: 22px;
+      border: 4px solid rgba(255, 196, 0, 0.95);
+      pointer-events: none;
+      animation: coachRipple 1.2s ease-out infinite;
+    }
+
+    body.coach-urgent .touch-btn.coach-target { animation-duration: 0.5s; }
+    body.coach-urgent .touch-btn.coach-target::after { animation-duration: 0.7s; }
+
+    @keyframes coachPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.13); }
+    }
+
+    @keyframes coachRipple {
+      0% { transform: scale(0.92); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+
+    #coach-hand {
+      position: fixed;
+      left: 0;
+      top: 0;
+      width: 64px;
+      height: 64px;
+      pointer-events: none;
+      z-index: 40;
+      display: none;
+    }
+
+    #coach-hand.show { display: block; }
+
+    #coach-hand svg {
+      width: 64px;
+      height: 64px;
+      overflow: visible;
+      transform-origin: 25px 3px;
+      filter: drop-shadow(0 0 5px rgba(255, 196, 0, 0.95)) drop-shadow(0 3px 0 rgba(0, 0, 0, 0.3));
+      animation: coachTapRight 0.9s ease-in-out infinite;
+    }
+
+    #coach-hand.lean-left svg { animation-name: coachTapLeft; }
+    body.coach-urgent #coach-hand svg { animation-duration: 0.55s; }
+
+    @keyframes coachTapRight {
+      0%, 100% { transform: rotate(-24deg) translateY(12px); }
+      45%, 62% { transform: rotate(-24deg) translateY(0) scale(0.9); }
+    }
+
+    @keyframes coachTapLeft {
+      0%, 100% { transform: rotate(24deg) translateY(12px); }
+      45%, 62% { transform: rotate(24deg) translateY(0) scale(0.9); }
+    }
+
     /* Top Bar Utility Buttons (Zero Overlap) */
     #btn-map     { top: 10px; left: 12px; }
     #btn-restart { top: 10px; left: 94px; }
     #btn-hero    { top: 10px; left: 176px; }
+    #btn-hint    { top: 10px; left: 258px; }
     #btn-mute    { top: 10px; right: 12px; }
 
     /* Bottom-Left 2x2 Directional Pad (Zero Overlap) */
@@ -103,6 +210,7 @@
       #btn-map     { top: 6px; left: 6px; }
       #btn-restart { top: 6px; left: 76px; }
       #btn-hero    { top: 6px; left: 146px; }
+      #btn-hint    { top: 6px; left: 216px; }
       #btn-mute    { top: 6px; right: 6px; }
 
       #btn-up      { bottom: 76px; left: 6px; }
@@ -151,6 +259,22 @@
     </svg>
   </button>
 
+  <!-- Guide Coach on/off (lightbulb) -->
+  <button id="btn-hint" class="touch-btn">
+    <svg viewBox="0 0 40 40">
+      <g class="bulb-rays" stroke="#ffb300" stroke-width="2.6" stroke-linecap="round">
+        <line x1="20" y1="1.5" x2="20" y2="5"/>
+        <line x1="7" y1="7" x2="9.6" y2="9.6"/>
+        <line x1="33" y1="7" x2="30.4" y2="9.6"/>
+        <line x1="2.5" y1="18" x2="6" y2="18"/>
+        <line x1="34" y1="18" x2="37.5" y2="18"/>
+      </g>
+      <path class="bulb-glass" d="M 20 7.5 A 10 10 0 0 1 26 25.5 L 26 29 L 14 29 L 14 25.5 A 10 10 0 0 1 20 7.5 Z" fill="#ffd426" stroke="#111" stroke-width="2.5" stroke-linejoin="round"/>
+      <rect x="14.5" y="30.5" width="11" height="3.4" rx="1.2" fill="#7b7d80" stroke="#111" stroke-width="1.8"/>
+      <rect x="16.5" y="34.6" width="7" height="2.8" rx="1.2" fill="#7b7d80" stroke="#111" stroke-width="1.8"/>
+    </svg>
+  </button>
+
   <button id="btn-mute" class="touch-btn">
     <svg viewBox="0 0 40 40">
       <polygon points="8,16 15,16 23,9 23,31 15,24 8,24" fill="#111"/>
@@ -162,34 +286,47 @@
   <!-- Bottom-Left Directional Cluster -->
   <button id="btn-up" class="touch-btn">
     <svg viewBox="0 0 40 40">
-      <polygon points="20,8 33,28 7,28" fill="#111"/>
+      <rect class="draw-ghost" x="9" y="2" width="22" height="22" fill="#ffffff" stroke="#e60012" stroke-width="2" stroke-dasharray="3,2"/>
+      <polygon class="arrow" points="20,8 33,28 7,28" fill="#111"/>
     </svg>
   </button>
 
   <button id="btn-down" class="touch-btn">
     <svg viewBox="0 0 40 40">
-      <polygon points="20,32 33,12 7,12" fill="#111"/>
+      <rect class="draw-ghost" x="9" y="16" width="22" height="22" fill="#ffffff" stroke="#e60012" stroke-width="2" stroke-dasharray="3,2"/>
+      <polygon class="arrow" points="20,32 33,12 7,12" fill="#111"/>
     </svg>
   </button>
 
   <button id="btn-left" class="touch-btn">
     <svg viewBox="0 0 40 40">
-      <polygon points="8,20 28,7 28,33" fill="#111"/>
+      <rect class="draw-ghost" x="2" y="9" width="22" height="22" fill="#ffffff" stroke="#e60012" stroke-width="2" stroke-dasharray="3,2"/>
+      <polygon class="arrow" points="8,20 28,7 28,33" fill="#111"/>
     </svg>
   </button>
 
   <button id="btn-right" class="touch-btn">
     <svg viewBox="0 0 40 40">
-      <polygon points="32,20 12,7 12,33" fill="#111"/>
+      <rect class="draw-ghost" x="16" y="9" width="22" height="22" fill="#ffffff" stroke="#e60012" stroke-width="2" stroke-dasharray="3,2"/>
+      <polygon class="arrow" points="32,20 12,7 12,33" fill="#111"/>
     </svg>
   </button>
 
   <!-- Bottom-Right Action Cluster (All 6 Box Actions + Jump) -->
   <button id="btn-draw" class="touch-btn">
-    <svg viewBox="0 0 40 40">
-      <rect x="7" y="15" width="13" height="13" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
-      <rect x="20" y="15" width="13" height="13" fill="#7b7d80" stroke="#111" stroke-width="2.5"/>
-      <polygon points="26,6 32,12 20,12" fill="#e60012"/>
+    <!-- Create: Qbby + a new box with a plus -->
+    <svg class="icon-create" viewBox="0 0 40 40">
+      <rect x="3" y="14" width="15" height="15" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <rect x="7" y="19" width="2.4" height="2.4" fill="#111"/>
+      <rect x="12" y="19" width="2.4" height="2.4" fill="#111"/>
+      <rect x="21" y="14" width="15" height="15" fill="#7b7d80" stroke="#111" stroke-width="2.5"/>
+      <path d="M 28.5 17.5 L 28.5 25.5 M 24.5 21.5 L 32.5 21.5" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/>
+    </svg>
+    <!-- Drop: box falls onto the floor (shown while holding a chain) -->
+    <svg class="icon-drop" viewBox="0 0 40 40">
+      <rect x="12" y="4" width="16" height="16" fill="#ffffff" stroke="#111" stroke-width="2.5"/>
+      <path d="M 20 22 L 20 31 M 14.5 26 L 20 31.5 L 25.5 26" fill="none" stroke="#1cc800" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M 7 36 L 33 36" stroke="#111" stroke-width="3" stroke-linecap="round"/>
     </svg>
   </button>
 
@@ -228,16 +365,25 @@
     </svg>
   </button>
 
+  <!-- Guide Coach tapping hand (pure SVG, zero text) -->
+  <div id="coach-hand" aria-hidden="true">
+    <svg viewBox="0 0 64 64">
+      <path d="M 20 30 L 20 8 A 5 5 0 0 1 30 8 L 30 26 A 4 4 0 0 1 38 27 A 4 4 0 0 1 46 30 A 4 4 0 0 1 54 34 L 54 46 Q 54 60 40 60 L 30 60 Q 20 60 15 52 L 6 38 A 4 4 0 0 1 13 33 L 20 40 Z" fill="#ffffff" stroke="#111111" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M 38 27 L 38 37 M 46 30 L 46 38" stroke="#111111" stroke-width="2.5" stroke-linecap="round"/>
+    </svg>
+  </div>
+
   <script src="src/audio.js"></script>
   <script src="src/stages.js"></script>
   <script src="src/engine.js"></script>
+  <script src="src/coach.js"></script>
   <script src="src/renderer.js"></script>
   <script src="src/input.js"></script>
   <script>
     (function () {
       const canvas = document.getElementById('game-canvas');
       window.BoxBoyRenderer.attach(canvas);
-      window.BoxBoyInput.init(window.BoxBoyEngine, window.BoxBoyRenderer, canvas);
+      window.BoxBoyInput.init(window.BoxBoyEngine, window.BoxBoyRenderer, canvas, window.BoxBoyCoach);
     })();
   </script>
 </body>

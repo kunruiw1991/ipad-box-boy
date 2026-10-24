@@ -16,6 +16,21 @@ Every screen, button, tutorial thought-bubble, HUD badge, and stage-clear modal 
 
 ---
 
+## Guide Coach: Always Know Which Button to Press
+
+A step-by-step, 100% graphical coach (lightbulb button, on by default) shows a young player exactly **one** thing to do at a time:
+
+- **One glowing button**: the button to press next pulses gold with a tapping hand on it; every other button fades out.
+- **A preview in the level**: a golden landing pad + dotted footsteps for walking, a dotted arc for jumps, dashed ghost boxes (with an arrow to the next one) for building, plus hook paths, slide paths with the target switch ringed, and a ring around the hero to switch to.
+- **One tap per step**: tapping the glowing arrow walks the hero to the golden pad and stops there by itself; tapping the glowing jump lands exactly on the planned spot. The Create button turns into a green Drop button while boxes are held, and the arrows turn red with box outlines while building.
+- **Gets you back on track**: walk the wrong way, erase the wrong box or build the wrong shape and the coach walks you back, asks you to rebuild, or (as a last resort) points at Restart. After ~6 s without progress it pulses faster and plays a soft chime.
+- **Whole flow**: it also points at Play on the title screen, the next uncleared stage on the map, and Next on the Stage Clear card.
+- **Fewer buttons early on**: Throw, Hook and Shoot only appear once the stage that teaches them is reached (W1S2, W1S7, W1S8). Erase is always there.
+
+How it works: each stage's verified solution is replayed in a hidden headless engine to record a per-step trace; every frame the live game is matched against that trace. A hint-following bot that only ever taps the highlighted button clears all 12 stages from the title screen with 16/16 Crowns and 12/12 Gold Medals, and recovers from deliberate mistakes (wrong arrow, erase, walking away, restart, wrong hero).
+
+---
+
 ## Key Features
 
 - **Playable Heroes — Qbby & Qucy (Box Girl)**:
@@ -31,7 +46,7 @@ Every screen, button, tutorial thought-bubble, HUD badge, and stage-clear modal 
 - **Dual-Mode iPad Touch Controls + Desktop Keyboard**:
   - **Mode A (Direct Canvas Touch Gestures)**: Drag directly from Qbby/Qucy on the `<canvas>` to extrude box chains tile-by-tile, and tap floating radial action bubbles (`Place ↓`, `Shoot ⇉`, `Hook ↰`, `Erase ✕`).
   - **Mode B (Split Ergonomic Virtual Gamepad)**: Left thumb D-Pad (`◀`, `▶`, `▲`, `▼`) and Right thumb 6-button diamond cluster (`Jump ⤒`, `Create ✚`, `Place/Throw ↓`, `Hook ↰`, `Shoot ⇉`, `Erase ✕`), all `>= 72×72 CSS px` with zero overlap across iPad Landscape (`1180×820`) and iPad Portrait (`820×1180`).
-  - **Keyboard Support**: `Arrow Keys` / `WASD` (Move & Extrude), `Space` (Jump), `Z` (Create / Place), `X` (Throw), `C` (Hook / Retract), `V` (Push / Shoot), `E` (Erase), `Tab` (Switch Hero), `R` (Reset Stage), `M` (Stage Map).
+  - **Keyboard Support**: `Arrow Keys` / `WASD` (Move & Extrude; Up jumps outside build mode), `Space` (Jump / Drop), `Z` (Create / Drop), `T` (Throw), `C` (Hook / Retract), `X` (Push / Shoot), `V` / `Backspace` (Erase), `Q` / `Tab` (Switch Hero), `R` (Restart Stage), `M` (Mute), `H` (Guide Coach on/off).
 - **Procedural Tactile WebAudio Synthesizer (`src/audio.js`)**:
   - Real-time oscillator and filtered noise synthesis for footsteps, jump whooshes, rising pentatonic marimba box-extrusion notes (`C5–D5–E5–G5–A5`), woody placement thuds, zippy ratchet grapples, switch chimes, laser hums, and stage-clear fanfare chords.
 
@@ -66,9 +81,10 @@ Every screen, button, tutorial thought-bubble, HUD badge, and stage-clear modal 
 └── src/
     ├── stages.js       # 12 grid-aligned stage definitions (W1S1-W2S4) & solution sequences
     ├── engine.js       # Deterministic 60fps physics, 6 box actions, co-op & window.__BOXBOY__ API
+    ├── coach.js        # Guide Coach: solution-trace replay, live step tracking & recovery
     ├── renderer.js     # 100% Zero-Text HTML5 Canvas renderer (zero fillText/strokeText)
     ├── audio.js        # Procedural WebAudio synthesizer (zero speechSynthesis)
-    └── input.js        # Dual-mode iPad PointerEvents + desktop keyboard bindings
+    └── input.js        # Dual-mode iPad PointerEvents, keyboard, coach highlight & guided walk/jump
 ```
 
-The game exposes `window.__BOXBOY__` (`loadStage`, `getState`, `step`, `injectAction`, `runStageSolution`, `runAllSolutions`) for deterministic headless browser verification across all 12 stages.
+The game exposes `window.__BOXBOY__` (`loadStage`, `getState`, `step`, `injectAction`, `runStageSolution`, `runAllSolutions`, `getHint`, `setHints`) for deterministic headless browser verification across all 12 stages.

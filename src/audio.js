@@ -404,6 +404,28 @@
       } catch (e) {}
     }
 
+    // 13. Guide Coach reminder: soft two-note "look here" ping
+    hintChime() {
+      if (!this._canPlay()) return;
+      const now = this.ctx.currentTime;
+      try {
+        [880.0, 1174.66].forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          const t = now + i * 0.12;
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+          gain.gain.setValueAtTime(0.001, t);
+          gain.gain.linearRampToValueAtTime(0.16, t + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+          osc.connect(gain);
+          gain.connect(this.masterGain);
+          osc.start(t);
+          osc.stop(t + 0.3);
+        });
+      } catch (e) {}
+    }
+
     // Hazard / Hurt sound
     hurt() {
       if (!this._canPlay()) return;
